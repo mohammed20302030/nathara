@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Nathara AR</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    body { margin: 0; overflow: hidden; }
+    #enter-ar {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      padding: 12px 20px;
+      border-radius: 999px;
+      border: none;
+      background: #000;
+      color: #fff;
+      font-size: 16px;
+    }
+  </style>
+</head>
+<body>
+  <button id="enter-ar">ادخل وضع AR</button>
+
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.160.0/examples/js/loaders/GLTFLoader.js"></script>
+
+  <script>
+    let renderer, scene, camera, glasses, xrRefSpace;
+
+    async function init() {
+      renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.xr.enabled = true;
+      document.body.appendChild(renderer.domElement);
+
+      scene = new THREE.Scene();
+      camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.01, 20);
+
+      const light = new THREE.HemisphereLight(0xffffff, 0x444444, 1.2);
+      scene.add(light);
+
+      const loader = new THREE.GLTFLoader();
+      // نموذج نظارة جاهز أونلاين (تجريبي)
+      loader.load(
+        'https://assets.babylonjs.com/meshes/Glass.glb',
+        (gltf) => {
+          glasses = gltf.scene;
+          glasses.scale.set(0.12, 0.12, 0.12);
+          glasses.position.set(0, 0, -0.5);
+          scene.add(glasses);
+        }
+      );
+
+      renderer.setAnimationLoop(() => {
+        renderer.render(scene, camera);
+      });
+    }
+
+    async function startAR() {
+      if (!navigator.xr) {
+        alert('المتصفح لا يدعم WebXR. جرّب Chrome على أندرويد.');
+        return;
+      }
+
+      const supported = await navigator.xr.isSessionSupported('immersive-ar');
+      if (!supported) {
+        alert('الجهاز لا يدعم AR WebXR مباشرة.');
+        return;
+      }
+
+      const session = await navigator.xr.requestSession('immersive-ar', {
+        requiredFeatures: ['local']
+      });
+
+      renderer.xr.setSession(session);
+
+      xrRefSpace = await session.requestReferenceSpace('local');
+
+      session.requestAnimationFrame(onXRFrame);
+    }
+
+    function onXRFrame(time, frame) {
+      const session = frame.session;
+      session.requestAnimationFrame(onXRFrame);
+
+      const pose = frame.getViewerPose(xrRefSpace);
+      if (pose && glasses) {
+        const view = pose.views[0];
+        const m = new THREE.Matrix4().fromArray(view.transform.matrix);
+        const pos = new THREE.Vector3();
+        const quat = new THREE.Quaternion();
+        const scale = new THREE.Vector3();
+        m.decompose(pos, quat, scale);
+
+        // نحط النظارة قدام الوجه شوي
+        const forward = new THREE.Vector3(0, 0, -1).applyQuaternion(quat);
+        const targetPos = pos.clone().add(forward.multiplyScalar(0.18));
+
+        glasses.position.copy(targetPos);
+        glasses.quaternion.copy(quat);
+      }
+
+      renderer.render(scene, camera);
+    }
+
+    document.getElementById('enter-ar').addEventListener('click', () => {
+      startAR();
+    });
+
+    init();
+  </script>
+</body>
+</html>
